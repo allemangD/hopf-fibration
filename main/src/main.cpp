@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <cmath>
 
 #define PI 3.14159f
 
@@ -107,8 +108,12 @@ namespace util {
 }
 
 struct HopfCircle {
-    float xi;
-    float eta;
+    float xi; // longitude
+    float eta; // latitude
+
+    HopfCircle(float xi, float eta) : xi(xi), eta(eta) {}
+
+    HopfCircle() : HopfCircle(0, 0) {}
 };
 
 struct State {
@@ -120,30 +125,36 @@ struct State {
 
     std::vector<HopfCircle> circles{};
 
-    explicit State(GLFWwindow *window) {
+    float t = 0;
+
+    void regen() {
+        circles.clear();
+
         const int N = 32;
-        for (int k = 0; k < N; ++k) {
-            circles.push_back({2 * PI * k / N, 0.025});
-            circles.push_back({2 * PI * k / N, PI / 2 - 0.025});
+        const int M = 4;
+        const float PAD = 0.0125;
 
-            circles.push_back({2 * PI * k / N, 0.3f});
-            circles.push_back({2 * PI * k / N, 0.4f});
-            circles.push_back({2 * PI * k / N, 0.5f});
-
-            circles.push_back({2 * PI * k / N, 1.1f});
-            circles.push_back({2 * PI * k / N, 1.2f});
-            circles.push_back({2 * PI * k / N, 1.3f});
+        for (int k = 0; k <= N; ++k) {
+            for (int j = 0; j <= M; ++j) {
+                float xi = 2 * PI * k / N;
+                float eta = (PI / 2 - 2 * PAD) * j / M + PAD;
+                circles.emplace_back(xi, eta);
+            }
         }
 
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        util::bufferData(GL_ARRAY_BUFFER, circles, GL_STREAM_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    explicit State(GLFWwindow *window) {
         printf("vendor: %s\nrenderer: %s\n", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
 
         glGenBuffers(1, &vbo);
         glGenBuffers(1, &ubo);
         glGenVertexArrays(1, &vao);
 
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        util::bufferData<HopfCircle>(GL_ARRAY_BUFFER, circles, GL_STATIC_DRAW);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        regen();
 
         glBindBufferBase(GL_UNIFORM_BUFFER, ubo_bp, ubo);
 
@@ -180,12 +191,25 @@ struct State {
         glfwGetFramebufferSize(window, &w, &h);
         auto ar = (float) w / h;
 
+        t += dt;
+
+        float c = std::cos(t / 8);
+        float s = std::sin(t / 8);
+
+        float c_ = std::cos(3.f / 8);
+        float s_ = std::sin(3.f / 8);
+
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
         util::bufferData<float>(GL_UNIFORM_BUFFER, {
             1.f / 4 / ar, 0, 0, 0,
             0, 0, 1.f / 10, 0,
             0, 1.f / 4, 0, 0,
-            0, 0, 0, 1
+            0, 0, 0, 1,
+
+            c, 0, 0, s,
+            0, c_, s_, 0,
+            0, -s_, c_, 0,
+            -s, 0, 0, c
         }, GL_STREAM_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
@@ -195,12 +219,13 @@ struct State {
         glfwGetFramebufferSize(window, &w, &h);
         glViewport(0, 0, w, h);
 
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(prog);
         glBindVertexArray(vao);
+        glEnable(GL_DEPTH_TEST);
         glPointSize(5);
-        glLineWidth(3);
+        glLineWidth(5);
         glDrawArrays(GL_POINTS, 0, (unsigned) circles.size());
         glBindVertexArray(0);
         glUseProgram(0);
