@@ -7,6 +7,8 @@
 #include <vector>
 #include <cmath>
 
+#include "glga.hpp"
+
 #define PI 3.14159f
 
 namespace util {
@@ -200,16 +202,19 @@ struct State {
         float s_ = std::sin(3.f / 8);
 
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-        util::bufferData<float>(GL_UNIFORM_BUFFER, {
-            1.f / 4 / ar, 0, 0, 0,
-            0, 0, 1.f / 10, 0,
-            0, 1.f / 4, 0, 0,
-            0, 0, 0, 1,
+        util::bufferData<ga::Mat>(GL_UNIFORM_BUFFER, {
+            ga::Mat(
+                ga::Vec(1.f / 4 / ar, 0, 0, 0),
+                ga::Vec(0, 0, 1.f / 10, 0),
+                ga::Vec(0, 1.f / 4, 0, 0),
+                ga::Vec(0, 0, 0, 1.f)),
 
-            c, 0, 0, s,
-            0, c_, s_, 0,
-            0, -s_, c_, 0,
-            -s, 0, 0, c
+            ga::Mat(
+                ga::Vec(c, 0, 0, s),
+                ga::Vec(0, c_, s_, 0),
+                ga::Vec(0, -s_, c_, 0),
+                ga::Vec(-s, 0, 0, c)
+            )
         }, GL_STREAM_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
