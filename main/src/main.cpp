@@ -19,11 +19,9 @@
 
 #include "util.h"
 
-#define RES_MAJOR 256
+#define RES_MAJOR 128
 #define RES_MINOR 8
 
-#define WIDTH_BARR .050f
-#define WIDTH_LINE .02f
 
 #define Z_RADIUS 10.f
 
@@ -35,49 +33,98 @@ struct Unifs {
 };
 
 struct State {
-    GLuint vao{};
-    GLuint vbo{};
-    GLuint ibo{};
+    GLuint vao_wide{};
+    GLuint vbo_wide{};
+    GLuint ibo_wide{};
+
+    GLuint vao_thin{};
+    GLuint vbo_thin{};
+    GLuint ibo_thin{};
+
     GLuint ubo{};
 
     GLuint prog{};
     const GLuint UNIF_BINDING_POINT = 1;
 
-    std::vector<glm::vec4> verts{};
-    std::vector<unsigned> inds{};
+    std::vector<glm::vec4> verts_wide{};
+    std::vector<unsigned> inds_wide{};
+
+    std::vector<glm::vec4> verts_thin{};
+    std::vector<unsigned> inds_thin{};
+
+    glm::mat4 rot = glm::identity<glm::mat4>();
+
     Unifs unifs;
 
-    void add_ring(float xi, float eta) {
-        std::vector<glm::vec4> _verts;
-        std::vector<unsigned> _inds;
+    glm::vec4 hopf(float xi, float nu, float eta) {
+        return glm::vec4(  // todo find parameterization given quaternion
+            cos((nu + xi) / 2) * sin(eta),
+            sin((nu + xi) / 2) * sin(eta),
+            cos((nu - xi) / 2) * cos(eta),
+            sin((nu - xi) / 2) * cos(eta)
+        );
+    }
 
-        for (int i = 0; i < RES_MAJOR; ++i) {
+    glm::vec3 stereo(float xi, float nu, float eta) {
+        auto h = hopf(xi, nu, eta);
+
+        h = rot * h;
+
+        return h.xyz() / (1 - h.w);
+    }
+
+    void
+    add_ring(std::vector<glm::vec4> &dest_verts, std::vector<unsigned> &dest_inds, float xi, float eta, float rad) {
+        std::vector<glm::vec3> circle;
+        std::vector<glm::vec3> torus;
+        std::vector<unsigned> ind;
+
+        for (unsigned i = 0; i < RES_MAJOR; ++i) {
             auto nu = 4 * PI * i / RES_MAJOR;
 
-            auto v = glm::vec4(  // todo find parameterization given quaternion
-                cos((nu + xi) / 2) * sin(eta),
-                sin((nu + xi) / 2) * sin(eta),
-                cos((nu - xi) / 2) * cos(eta),
-                sin((nu - xi) / 2) * cos(eta)
-            );
+            auto v = stereo(xi, nu, eta);
 
-            // todo build torus about projection
-            _verts.emplace_back(v.xzy() / (1.f - v.w), 1);
+            circle.push_back(v);
         }
 
-        _inds.push_back(0);
-        for (unsigned i = 1; i < RES_MAJOR; ++i) {
-            _inds.push_back(i);
-            _inds.push_back(i);
+        auto center = glm::vec3(0);
+        for (auto v : circle) center += v;
+        center /= (float) RES_MAJOR;
+
+        auto A = stereo(xi, 0 * PI, eta);
+        auto B = stereo(xi, 1 * PI, eta);
+        auto normal = glm::normalize(cross(A - center, B - center));
+
+        for (unsigned i = 0; i < circle.size(); ++i) {
+            auto v = circle[i];
+
+            auto b1 = normal;
+            auto b2 = glm::normalize(v - center);
+
+            for (int j = 0; j < RES_MINOR; ++j) {
+                auto theta = 2 * PI * j / RES_MINOR;
+
+                auto p = v + (cos(theta) * b1 + sin(theta) * b2) * rad;
+
+                ind.push_back(i * RES_MINOR + j);
+                ind.push_back((i + 1) * RES_MINOR + j);
+                ind.push_back(i * RES_MINOR + (j + 1) % RES_MINOR);
+
+                ind.push_back((i + 1) * RES_MINOR + j);
+                ind.push_back((i + 1) * RES_MINOR + (j + 1) % RES_MINOR);
+                ind.push_back(i * RES_MINOR + (j + 1) % RES_MINOR);
+
+                torus.push_back(p);
+            }
         }
-        _inds.push_back(0);
 
-        auto offset = (unsigned) verts.size();
+        auto offset = (unsigned) dest_verts.size();
 
-        for (auto v: _verts)
-            verts.push_back(v);
-        for (auto i : _inds)
-            inds.push_back(offset + i);
+        for (auto v : torus)
+            dest_verts.emplace_back(v, 1);
+
+        for (auto i : ind)
+            dest_inds.push_back(offset + i % (RES_MAJOR * RES_MINOR));
     }
 
     void updateUnifs() {
@@ -86,44 +133,84 @@ struct State {
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
 
+    void regen() {
+        printf("generating\n");
+
+        verts_wide.clear();
+        verts_thin.clear();
+        inds_wide.clear();
+        inds_thin.clear();
+
+        const float XI_R = 32;
+        const float ETA_R = 4;
+        const float ETA_BUF = 0.0f;
+
+        for (int i = 0; i < XI_R; ++i) {
+            float xi = 2 * PI * i / XI_R;
+
+            for (int j = 0; j <= ETA_R; ++j) {
+                float eta = ETA_BUF + (PI / 2 - 2 * ETA_BUF) * j / ETA_R;
+
+                add_ring(verts_wide, inds_wide, xi, eta, .01);
+                add_ring(verts_thin, inds_thin, xi, eta, .0025);
+            }
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_thin);
+        util::bufferData(GL_ARRAY_BUFFER, verts_thin, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_thin);
+        util::bufferData(GL_ELEMENT_ARRAY_BUFFER, inds_thin, GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_wide);
+        util::bufferData(GL_ARRAY_BUFFER, verts_wide, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_wide);
+        util::bufferData(GL_ELEMENT_ARRAY_BUFFER, inds_wide, GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    }
+
     void init(GLFWwindow *window) {
         GLuint vs = util::buildShader(GL_VERTEX_SHADER, "vs", {"shaders/main.vert"});
         GLuint fs = util::buildShader(GL_FRAGMENT_SHADER, "fs", {"shaders/main.frag"});
         prog = util::buildProgram(false, "prog", {vs, fs});
 
-        for (int i = 0; i < 32; ++i) {
-            for (int j = 0; j <= 4; ++j) {
-                float xi = 2 * PI * i / 32;
-                const float buf = 0.0f;
-                float eta = buf + (PI / 2 - 2 * buf) * j / 4;
-                add_ring(xi, eta);
-            }
-        }
+        glGenBuffers(1, &vbo_wide);
+        glGenBuffers(1, &ibo_wide);
+        glGenBuffers(1, &vbo_thin);
+        glGenBuffers(1, &ibo_thin);
+
+        regen();
+
+        GLint pos = glGetAttribLocation(prog, "iPos");
 
         glGenBuffers(1, &ubo);
         glBindBufferBase(GL_UNIFORM_BUFFER, UNIF_BINDING_POINT, ubo);
         updateUnifs();
 
-        glGenBuffers(1, &vbo);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        util::bufferData(GL_ARRAY_BUFFER, verts, GL_STATIC_DRAW);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-        glGenBuffers(1, &ibo);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-        util::bufferData(GL_ELEMENT_ARRAY_BUFFER, inds, GL_STATIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-        glGenVertexArrays(1, &vao);
-        glBindVertexArray(vao);
-        GLint pos = glGetAttribLocation(prog, "iPos");
+        glGenVertexArrays(1, &vao_wide);
+        glBindVertexArray(vao_wide);
         if (pos >= 0) {
             glEnableVertexAttribArray(0);
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo_wide);
             glVertexAttribPointer((GLuint) pos, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), nullptr);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_wide);
+        glBindVertexArray(0);
+
+        glGenVertexArrays(1, &vao_thin);
+        glBindVertexArray(vao_thin);
+        if (pos >= 0) {
+            glEnableVertexAttribArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo_thin);
+            glVertexAttribPointer((GLuint) pos, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), nullptr);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        }
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_thin);
         glBindVertexArray(0);
     }
 
@@ -132,13 +219,26 @@ struct State {
         glfwGetFramebufferSize(window, &w, &h);
 
         glViewport(0, 0, w, h);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(1, 1, 1, 1);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glBindVertexArray(vao);
-        unifs.color = glm::vec4(1, 0, 0, 1);
+        glBindVertexArray(vao_wide);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        unifs.color = glm::vec4(1, 1, 1, 1);
         updateUnifs();
         glUseProgram(prog);
-        glDrawElements(GL_LINES, (GLsizei) inds.size(), GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, (GLsizei) inds_wide.size(), GL_UNSIGNED_INT, 0);
+
+        glBindVertexArray(vao_thin);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        unifs.color = glm::vec4(0, 0, 0, 1);
+        updateUnifs();
+        glUseProgram(prog);
+        glDrawElements(GL_TRIANGLES, (GLsizei) inds_thin.size(), GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);
     }
@@ -154,6 +254,7 @@ struct State {
     void deinit(GLFWwindow *window) {
 
     }
+
 };
 
 void run(State *state, const std::string &title) {
@@ -171,6 +272,7 @@ void run(State *state, const std::string &title) {
     gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
     glfwSwapInterval(0);
 
+    glfwSetWindowUserPointer(window, state);
     state->init(window);
 
     double time = glfwGetTime();
