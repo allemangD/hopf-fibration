@@ -10,6 +10,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtx/string_cast.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <cstdlib>
 #include <math.h>
@@ -18,20 +19,33 @@
 
 #include "util.h"
 
-#define RES_MAJOR 128
+#define RES_MAJOR 256
 #define RES_MINOR 8
 
+#define WIDTH_BARR .050f
+#define WIDTH_LINE .02f
+
+#define Z_RADIUS 10.f
+
 #define PI (float) (M_PI)
+
+struct Unifs {
+    glm::mat4 proj = glm::identity<glm::mat4>();
+    glm::vec4 color = glm::vec4(1);
+};
 
 struct State {
     GLuint vao{};
     GLuint vbo{};
     GLuint ibo{};
+    GLuint ubo{};
 
     GLuint prog{};
+    const GLuint UNIF_BINDING_POINT = 1;
 
     std::vector<glm::vec4> verts{};
     std::vector<unsigned> inds{};
+    Unifs unifs;
 
     void add_ring(float xi, float eta) {
         std::vector<glm::vec4> _verts;
@@ -47,6 +61,7 @@ struct State {
                 sin((nu - xi) / 2) * cos(eta)
             );
 
+            // todo build torus about projection
             _verts.emplace_back(v.xzy() / (1.f - v.w), 1);
         }
 
@@ -65,6 +80,11 @@ struct State {
             inds.push_back(offset + i);
     }
 
+    void updateUnifs() {
+        glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+        util::bufferData(GL_UNIFORM_BUFFER, unifs, GL_STREAM_DRAW);
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    }
 
     void init(GLFWwindow *window) {
         GLuint vs = util::buildShader(GL_VERTEX_SHADER, "vs", {"shaders/main.vert"});
@@ -74,10 +94,15 @@ struct State {
         for (int i = 0; i < 32; ++i) {
             for (int j = 0; j <= 4; ++j) {
                 float xi = 2 * PI * i / 32;
-                float eta = PI / 2 * j / 4;
+                const float buf = 0.0f;
+                float eta = buf + (PI / 2 - 2 * buf) * j / 4;
                 add_ring(xi, eta);
             }
         }
+
+        glGenBuffers(1, &ubo);
+        glBindBufferBase(GL_UNIFORM_BUFFER, UNIF_BINDING_POINT, ubo);
+        updateUnifs();
 
         glGenBuffers(1, &vbo);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -110,6 +135,8 @@ struct State {
         glClear(GL_COLOR_BUFFER_BIT);
 
         glBindVertexArray(vao);
+        unifs.color = glm::vec4(1, 0, 0, 1);
+        updateUnifs();
         glUseProgram(prog);
         glDrawElements(GL_LINES, (GLsizei) inds.size(), GL_UNSIGNED_INT, 0);
 
@@ -117,7 +144,11 @@ struct State {
     }
 
     void update(GLFWwindow *window, float dt, int frame) {
+        int w, h;
+        glfwGetFramebufferSize(window, &w, &h);
 
+        float ar = (float) w / (float) h;
+        unifs.proj = glm::ortho(-ar, ar, -1.f, 1.f, -Z_RADIUS, Z_RADIUS);
     }
 
     void deinit(GLFWwindow *window) {
