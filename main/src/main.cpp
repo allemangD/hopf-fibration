@@ -19,7 +19,7 @@
 
 #include "util.h"
 
-#define RES_MAJOR 128
+#define RES_MAJOR 512
 #define RES_MINOR 8
 
 
@@ -66,11 +66,43 @@ struct State {
     glm::vec3 stereo(float xi, float nu, float eta) {
         auto h = hopf(xi, nu, eta);
 
-        glm::mat4 rot = glm::identity<glm::mat4>();
+        auto rot1 = glm::mat4(
+            glm::vec4(-0.161583, 0.474819, 0.036271, 0.864373),
+            glm::vec4(0.637664, 0.677328, 0.25526, -0.263578),
+            glm::vec4(0.392037, 0.015514, -0.914032, 0.103119),
+            glm::vec4(0.643116, -0.561741, 0.313199, 0.415657)
+        );
+
+        auto rot2 = glm::mat4(
+            glm::vec4(+0.656973, +0.386914, +0.646219, +0.032970),
+            glm::vec4(-0.459722, +0.569877, +0.159946, -0.662054),
+            glm::vec4(-0.268466, -0.653407, +0.675016, -0.212936),
+            glm::vec4(-0.533824, +0.314007, +0.318080, +0.717815)
+        );
+
+        auto rot3 = glm::mat4(
+            glm::vec4(0.794847, -0.598309, -0.101081, -0.00544741),
+            glm::vec4(-0.0472779, 0.0524503, -0.719464, 0.690936),
+            glm::vec4(0.592606, 0.798574, -0.06232, -0.0849633),
+            glm::vec4(0.12167, 0.0394918, 0.684308, 0.717888)
+        );
+
+        auto rot4 = glm::mat4(
+            glm::vec4(-0.362372, 0.701484, 0.304057, 0.533071),
+            glm::vec4(-0.582584, -0.358701, -0.598223, 0.417213),
+            glm::vec4(-0.579933, -0.419501, 0.662733, -0.220209),
+            glm::vec4(0.43928, -0.450868, 0.332376, 0.702342)
+        );
+
+        auto rot = rot2;
 
         h = rot * h;
 
-        return h.xyz() / (1 - h.w);
+        auto s = h.xzy() / (1 - h.w);
+
+        s /= 2;
+
+        return s;
     }
 
     void
@@ -143,7 +175,7 @@ struct State {
 
         const float XI_R = 32;
         const float ETA_R = 4;
-        const float ETA_BUF = 0.0f;
+        const float ETA_BUF = 0;
 
         for (int i = 0; i < XI_R; ++i) {
             float xi = 2 * PI * i / XI_R;
@@ -220,22 +252,24 @@ struct State {
 
         glViewport(0, 0, w, h);
         glClearColor(1, 1, 1, 1);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        unifs.color = glm::vec4(0, 0, 0, 1);
+
+        glClear(GL_DEPTH_BUFFER_BIT);
 
         glBindVertexArray(vao_wide);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
-        unifs.color = glm::vec4(1, 1, 1, 1);
         updateUnifs();
         glUseProgram(prog);
         glDrawElements(GL_TRIANGLES, (GLsizei) inds_wide.size(), GL_UNSIGNED_INT, 0);
+
+        glClear(GL_COLOR_BUFFER_BIT);
 
         glBindVertexArray(vao_thin);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
-        unifs.color = glm::vec4(0, 0, 0, 1);
         updateUnifs();
         glUseProgram(prog);
         glDrawElements(GL_TRIANGLES, (GLsizei) inds_thin.size(), GL_UNSIGNED_INT, 0);
