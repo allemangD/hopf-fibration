@@ -1,17 +1,18 @@
 project(main)
 
 add_executable(${PROJECT_NAME}
-        src/main.cpp)
+        src/main.cpp include/util.h)
 
 target_link_libraries(${PROJECT_NAME}
         glad
+        glm
         glfw)
 
 target_include_directories(${PROJECT_NAME}
-        PRIVATE include)
+        PRIVATE
+        include)
 
 set(SHADERS
-        shaders/main.frag
         shaders/main.vert)
 add_custom_target(shaders DEPENDS ${SHADERS})
 
