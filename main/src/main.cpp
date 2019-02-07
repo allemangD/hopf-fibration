@@ -52,8 +52,6 @@ struct State {
     std::vector<glm::vec4> verts_thin{};
     std::vector<unsigned> inds_thin{};
 
-    glm::mat4 rot = glm::identity<glm::mat4>();
-
     Unifs unifs;
 
     glm::vec4 hopf(float xi, float nu, float eta) {
@@ -67,6 +65,8 @@ struct State {
 
     glm::vec3 stereo(float xi, float nu, float eta) {
         auto h = hopf(xi, nu, eta);
+
+        glm::mat4 rot = glm::identity<glm::mat4>();
 
         h = rot * h;
 
