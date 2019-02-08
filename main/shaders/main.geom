@@ -1,6 +1,6 @@
 #version 440
 
-#define CIRCLE_RES 64
+#define CIRCLE_RES 128
 #define PI 3.14159
 
 layout(points) in;

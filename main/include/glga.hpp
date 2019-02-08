@@ -10,7 +10,6 @@ namespace ga {
 
         Vec(float x, float y, float z, float w) :
             x(x), y(y), z(z), w(w) {}
-
     };
 
     struct Bivec {
@@ -29,11 +28,11 @@ namespace ga {
     namespace unit {
         Vec x() { return Vec(1, 0, 0, 0); };
 
-        Vec y() { return Vec(1, 0, 0, 0); };
+        Vec y() { return Vec(0, 1, 0, 0); };
 
-        Vec z() { return Vec(1, 0, 0, 0); };
+        Vec z() { return Vec(0, 0, 1, 0); };
 
-        Vec w() { return Vec(1, 0, 0, 0); };
+        Vec w() { return Vec(0, 0, 0, 1); };
 
         Bivec xy() { return Bivec(1, 0, 0, 0, 0, 0); }
 
@@ -46,6 +45,8 @@ namespace ga {
         Bivec xz() { return Bivec(0, 0, 0, 0, 1, 0); }
 
         Bivec yw() { return Bivec(0, 0, 0, 0, 0, 1); }
+
+        Mat identity() { return Mat(x(), y(), z(), w()); }
     }
 
     float length2(Vec v) {
@@ -93,6 +94,28 @@ namespace ga {
             c * v.yw);
     }
 
+    Vec mul(Mat m, Vec v) {
+        return add(add(mul(v.x, m.x), mul(v.y, m.y)), add(mul(v.z, m.z), mul(v.w, m.w)));
+    }
+
+    Mat mul(Mat m, Mat n) {
+        return Mat(
+            mul(m, n.x),
+            mul(m, n.y),
+            mul(m, n.z),
+            mul(m, n.w)
+        );
+    }
+
+    Mat mul(float c, Mat m) {
+        return Mat(
+            mul(c, m.x),
+            mul(c, m.y),
+            mul(c, m.z),
+            mul(c, m.w)
+        );
+    }
+
     Vec normalize(Vec v) {
         return mul(1 / length(v), v);
     }
@@ -101,21 +124,42 @@ namespace ga {
         return mul(1 / length(v), v);
     }
 
+    Vec tform(float c, Vec v) {
+
+    }
+
+    Vec tform(Vec u, Vec v) {
+
+    }
+
+    Vec tform(Bivec u, Vec v) {
+
+    }
+
     Mat matrix(float c) {
-        // c as a transformation
-        // scale by c
-        return Mat(Vec(c, 0, 0, 0), Vec(0, c, 0, 0), Vec(0, 0, c, 0), Vec(0, 0, 0, c));
+        auto m = unit::identity();
+        m.x = tform(c, m.x);
+        m.y = tform(c, m.y);
+        m.z = tform(c, m.z);
+        m.w = tform(c, m.w);
+        return m;
     }
 
     Mat matrix(Vec v) {
-        // v as a transformation
-        // reflect along v
-        return matrix(1); // todo reflection
+        auto m = unit::identity();
+        m.x = tform(v, m.x);
+        m.y = tform(v, m.y);
+        m.z = tform(v, m.z);
+        m.w = tform(v, m.w);
+        return m;
     }
 
-    Mat rotor(Bivec v) {
-        // v as a transformation
-        // rotate along v
-        return matrix(1);
+    Mat matrix(Bivec v) {
+        auto m = unit::identity();
+        m.x = tform(v, m.x);
+        m.y = tform(v, m.y);
+        m.z = tform(v, m.z);
+        m.w = tform(v, m.w);
+        return m;
     }
 }

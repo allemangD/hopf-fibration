@@ -121,13 +121,17 @@ struct HopfCircle {
 struct State {
     GLuint vao{};
     GLuint vbo{}, ubo{};
+    GLuint unif_bright{};
     GLuint ubo_bp = 1;
 
     GLuint prog{};
 
     std::vector<HopfCircle> circles{};
+    ga::Mat rot = ga::unit::identity();
+    float view = 4.f;
 
     float t = 0;
+    float dt = 0;
 
     void regen() {
         circles.clear();
@@ -136,10 +140,10 @@ struct State {
         const int M = 4;
         const float PAD = 0.0125;
 
-        for (int k = 0; k <= N; ++k) {
-            for (int j = 0; j <= M; ++j) {
-                float xi = 2 * PI * k / N;
-                float eta = (PI / 2 - 2 * PAD) * j / M + PAD;
+        for (int x = 0; x <= N; ++x) {
+            for (int e = 1; e < M; ++e) {
+                float xi = 2 * PI * x / N;
+                float eta = (PI / 2 - 2 * PAD) * e / M + PAD;
                 circles.emplace_back(xi, eta);
             }
         }
@@ -151,6 +155,10 @@ struct State {
 
     explicit State(GLFWwindow *window) {
         printf("vendor: %s\nrenderer: %s\n", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
+
+        float lw[2];
+        glGetFloatv(GL_LINE_WIDTH_RANGE, lw);
+        printf("line width range: %.2f to %.2f\n", lw[0], lw[1]);
 
         glGenBuffers(1, &vbo);
         glGenBuffers(1, &ubo);
@@ -164,6 +172,8 @@ struct State {
         GLuint gs = util::buildShader(GL_GEOMETRY_SHADER, "gs", {"shaders/main.geom"});
         GLuint fs = util::buildShader(GL_FRAGMENT_SHADER, "fs", {"shaders/main.frag"});
         prog = util::buildProgram(false, "prog", {vs, gs, fs});
+
+        unif_bright = (GLuint) glGetUniformLocation(prog, "bright");
 
         glBindVertexArray(vao);
 
@@ -204,17 +214,11 @@ struct State {
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
         util::bufferData<ga::Mat>(GL_UNIFORM_BUFFER, {
             ga::Mat(
-                ga::Vec(1.f / 4 / ar, 0, 0, 0),
+                ga::Vec(1.f / view / ar, 0, 0, 0),
                 ga::Vec(0, 0, 1.f / 10, 0),
-                ga::Vec(0, 1.f / 4, 0, 0),
+                ga::Vec(0, 1.f / view, 0, 0),
                 ga::Vec(0, 0, 0, 1.f)),
-
-            ga::Mat(
-                ga::Vec(c, 0, 0, s),
-                ga::Vec(0, c_, s_, 0),
-                ga::Vec(0, -s_, c_, 0),
-                ga::Vec(-s, 0, 0, c)
-            )
+            rot
         }, GL_STREAM_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
@@ -226,12 +230,20 @@ struct State {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glDepthFunc(GL_LEQUAL);
+
         glUseProgram(prog);
         glBindVertexArray(vao);
         glEnable(GL_DEPTH_TEST);
-        glPointSize(5);
-        glLineWidth(5);
+
+        glLineWidth(10);
+        glUniform1f(unif_bright, 0);
         glDrawArrays(GL_POINTS, 0, (unsigned) circles.size());
+
+        glLineWidth(1);
+        glUniform1f(unif_bright, 1);
+        glDrawArrays(GL_POINTS, 0, (unsigned) circles.size());
+
         glBindVertexArray(0);
         glUseProgram(0);
 
@@ -239,9 +251,99 @@ struct State {
         glfwSwapBuffers(window);
     }
 
+    void on_scroll(GLFWwindow *window, double xoffset, double yoffset) {
+        printf("scroll %.2f %.2f\n", xoffset, yoffset);
+
+        int xw = glfwGetKey(window, GLFW_KEY_Q);
+        int yw = glfwGetKey(window, GLFW_KEY_W);
+        int zw = glfwGetKey(window, GLFW_KEY_E);
+        int xy = glfwGetKey(window, GLFW_KEY_A);
+        int yz = glfwGetKey(window, GLFW_KEY_S);
+        int zx = glfwGetKey(window, GLFW_KEY_D);
+
+        int zoom = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL);
+
+        float t = (float) yoffset * PI / 48;
+        float c = std::cos(t);
+        float s = std::sin(t);
+
+        if (xw) {
+            rot = ga::mul(rot, ga::Mat(
+                ga::Vec(c, 0, 0, s),
+                ga::Vec(0, 1, 0, 0),
+                ga::Vec(0, 0, 1, 0),
+                ga::Vec(-s, 0, 0, c)
+            ));
+        }
+
+        if (yw) {
+            rot = ga::mul(rot, ga::Mat(
+                ga::Vec(1, 0, 0, 0),
+                ga::Vec(0, c, 0, s),
+                ga::Vec(0, 0, 1, 0),
+                ga::Vec(0, -s, 0, c)
+            ));
+        }
+
+        if (zw) {
+            rot = ga::mul(rot, ga::Mat(
+                ga::Vec(1, 0, 0, 0),
+                ga::Vec(0, 1, 0, 0),
+                ga::Vec(0, 0, c, s),
+                ga::Vec(0, 0, -s, c)
+            ));
+        }
+
+        if (xy) {
+            rot = ga::mul(rot, ga::Mat(
+                ga::Vec(c, s, 0, 0),
+                ga::Vec(-s, c, 0, 0),
+                ga::Vec(0, 0, 1, 0),
+                ga::Vec(0, 0, 0, 1)
+            ));
+        }
+
+        if (yz) {
+            rot = ga::mul(rot, ga::Mat(
+                ga::Vec(1, 0, 0, 0),
+                ga::Vec(0, c, s, 0),
+                ga::Vec(0, -s, c, 0),
+                ga::Vec(0, 0, 0, 1)
+            ));
+        }
+
+        if (zx) {
+            rot = ga::mul(rot, ga::Mat(
+                ga::Vec(c, 0, -s, 0),
+                ga::Vec(0, 1, 0, 0),
+                ga::Vec(s, 0, c, 0),
+                ga::Vec(0, 0, 0, 1)
+            ));
+        }
+
+        if (zoom) {
+            view *= 1 - t / 5;
+        }
+
+        std::ofstream matfile;
+        matfile.open("matrix.txt");
+        matfile << "vec((\n";
+        matfile << "vec((" << rot.x.x << ", " << rot.x.y << ", " << rot.x.z << ", " << rot.x.w << ")),\n";
+        matfile << "vec((" << rot.y.x << ", " << rot.y.y << ", " << rot.y.z << ", " << rot.y.w << ")),\n";
+        matfile << "vec((" << rot.z.x << ", " << rot.z.y << ", " << rot.z.z << ", " << rot.z.w << ")),\n";
+        matfile << "vec((" << rot.w.x << ", " << rot.w.y << ", " << rot.w.z << ", " << rot.w.w << ")),\n";
+        matfile << ")),";
+        matfile.close();
+    }
+
     void deinit(GLFWwindow *window) {
     }
 };
+
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
+    auto *state = (State *) glfwGetWindowUserPointer(window);
+    state->on_scroll(window, xoffset, yoffset);
+}
 
 void run() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -259,6 +361,9 @@ void run() {
     glfwSwapInterval(0);
 
     auto state = State(window);
+    glfwSetWindowUserPointer(window, &state);
+
+    glfwSetScrollCallback(window, scroll_callback);
 
     double time = glfwGetTime();
     int frame = 0;
