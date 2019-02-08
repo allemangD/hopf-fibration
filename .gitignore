@@ -149,3 +149,4 @@ fabric.properties
 *.out
 *.app
 
+.idea/
