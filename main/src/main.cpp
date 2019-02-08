@@ -66,39 +66,50 @@ struct State {
     glm::vec3 stereo(float xi, float nu, float eta) {
         auto h = hopf(xi, nu, eta);
 
-        auto rot1 = glm::mat4(
-            glm::vec4(-0.161583, 0.474819, 0.036271, 0.864373),
-            glm::vec4(0.637664, 0.677328, 0.25526, -0.263578),
-            glm::vec4(0.392037, 0.015514, -0.914032, 0.103119),
-            glm::vec4(0.643116, -0.561741, 0.313199, 0.415657)
+        float xw = 0.8;
+        float yw = 0.0;
+        float zw = 2.5;
+        float xy = 0.0;
+        float yz = 0.5;
+        float zx = 0.0;
+
+        auto r = glm::mat4(
+            glm::vec4(cos(xw), 0, 0, sin(xw)),
+            glm::vec4(0, 1, 0, 0),
+            glm::vec4(0, 0, 1, 0),
+            glm::vec4(-sin(xw), 0, 0, cos(xw))
+        ) * glm::mat4(
+            glm::vec4(1, 0, 0, 0),
+            glm::vec4(0, cos(yw), 0, sin(yw)),
+            glm::vec4(0, 0, 1, 0),
+            glm::vec4(0, -sin(yw), 0, cos(yw))
+        ) * glm::mat4(
+            glm::vec4(1, 0, 0, 0),
+            glm::vec4(0, 1, 0, 0),
+            glm::vec4(0, 0, cos(zw), sin(zw)),
+            glm::vec4(0, 0, -sin(zw), cos(zw))
+        ) * glm::mat4(
+            glm::vec4(cos(xy), sin(xy), 0, 0),
+            glm::vec4(-sin(xy), cos(xy), 0, 0),
+            glm::vec4(0, 0, 1, 0),
+            glm::vec4(0, 0, 0, 1)
+        ) * glm::mat4(
+            glm::vec4(1, 0, 0, 0),
+            glm::vec4(0, cos(yz), sin(yz), 0),
+            glm::vec4(0, -sin(yz), cos(yz), 0),
+            glm::vec4(0, 0, 0, 1)
+        ) * glm::mat4(
+            glm::vec4(cos(zx), 0, -sin(zx), 0),
+            glm::vec4(0, 1, 0, 0),
+            glm::vec4(sin(zx), 0, cos(zx), 0),
+            glm::vec4(0, 0, 0, 1)
         );
 
-        auto rot2 = glm::mat4(
-            glm::vec4(+0.656973, +0.386914, +0.646219, +0.032970),
-            glm::vec4(-0.459722, +0.569877, +0.159946, -0.662054),
-            glm::vec4(-0.268466, -0.653407, +0.675016, -0.212936),
-            glm::vec4(-0.533824, +0.314007, +0.318080, +0.717815)
-        );
-
-        auto rot3 = glm::mat4(
-            glm::vec4(0.794847, -0.598309, -0.101081, -0.00544741),
-            glm::vec4(-0.0472779, 0.0524503, -0.719464, 0.690936),
-            glm::vec4(0.592606, 0.798574, -0.06232, -0.0849633),
-            glm::vec4(0.12167, 0.0394918, 0.684308, 0.717888)
-        );
-
-        auto rot4 = glm::mat4(
-            glm::vec4(-0.362372, 0.701484, 0.304057, 0.533071),
-            glm::vec4(-0.582584, -0.358701, -0.598223, 0.417213),
-            glm::vec4(-0.579933, -0.419501, 0.662733, -0.220209),
-            glm::vec4(0.43928, -0.450868, 0.332376, 0.702342)
-        );
-
-        auto rot = rot2;
+        auto rot = r;
 
         h = rot * h;
 
-        auto s = h.xzy() / (1 - h.w);
+        auto s = h.xyz() / (1 - h.w);
 
         s /= 2;
 
@@ -173,20 +184,26 @@ struct State {
         inds_wide.clear();
         inds_thin.clear();
 
-        const float XI_R = 32;
-        const float ETA_R = 4;
+        const float XI_R = 24;
+        const float ETA_R = 5;
         const float ETA_BUF = 0;
 
         for (int i = 0; i < XI_R; ++i) {
             float xi = 2 * PI * i / XI_R;
 
-            for (int j = 0; j <= ETA_R; ++j) {
+            for (int j = 1; j <= ETA_R - 1; ++j) {
                 float eta = ETA_BUF + (PI / 2 - 2 * ETA_BUF) * j / ETA_R;
 
-                add_ring(verts_wide, inds_wide, xi, eta, .01);
-                add_ring(verts_thin, inds_thin, xi, eta, .0025);
+                add_ring(verts_wide, inds_wide, xi, eta, .015);
+                add_ring(verts_thin, inds_thin, xi, eta, .004);
             }
         }
+
+        add_ring(verts_wide, inds_wide, .001f, .0f, .015);
+        add_ring(verts_thin, inds_thin, .001f, .0f, .008);
+
+        add_ring(verts_wide, inds_wide, .001f, PI / 2 - .0f, .015);
+        add_ring(verts_thin, inds_thin, .001f, PI / 2 - .0f, .008);
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo_thin);
         util::bufferData(GL_ARRAY_BUFFER, verts_thin, GL_STATIC_DRAW);
@@ -296,7 +313,7 @@ void run(State *state, const std::string &title) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    auto window = glfwCreateWindow(1280, 720, title.c_str(), nullptr, nullptr);
+    auto window = glfwCreateWindow(3840, 1249, title.c_str(), nullptr, nullptr);
     if (!window) {
         glfwTerminate();
         exit(EXIT_FAILURE);
