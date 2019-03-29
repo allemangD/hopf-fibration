@@ -67,7 +67,7 @@ struct State {
         auto h = hopf(xi, nu, eta);
 
         float xw = 0.8;
-        float yw = 0.0;
+        float yw = -0.1;
         float zw = 2.5;
         float xy = 0.0;
         float yz = 0.5;
@@ -184,7 +184,7 @@ struct State {
         inds_wide.clear();
         inds_thin.clear();
 
-        const float XI_R = 24;
+        const float XI_R = 28;
         const float ETA_R = 5;
         const float ETA_BUF = 0;
 
