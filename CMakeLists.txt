@@ -1,14 +1,31 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.21)
 project(hopf)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
-add_library(glad vendor/glad/src/glad.c)
-target_include_directories(glad PUBLIC vendor/glad/include)
+include(FetchContent)
 
-option(GLFW_BUILD_DOCS OFF)
-option(GLFW_BUILD_EXAMPLES OFF)
-option(GLFW_BUILD_TESTS OFF)
-add_subdirectory(vendor/glfw)
+include(External/glfw.cmake)
+include(External/imgui.cmake)
+include(External/eigen.cmake)
+include(External/glad.cmake)
+include(External/json.cmake)
 
-add_subdirectory(main)
+include_directories(include)
+
+add_custom_target(resources DEPENDS resources_output)
+add_custom_command(
+    OUTPUT resources_output
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/res ${CMAKE_CURRENT_BINARY_DIR}/res
+    COMMENT "Copying Resources")
+
+add_executable(hopf
+    src/main.cpp
+    src/gl/debug.hpp
+    src/gl/shader.hpp
+    src/gl/buffer.hpp
+    src/gl/vertexarray.hpp
+    src/gl/types.hpp)
+
+target_link_libraries(hopf glfw glad imgui eigen nlohmann_json)
+add_dependencies(hopf resources)
