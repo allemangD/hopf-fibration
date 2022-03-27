@@ -182,9 +182,7 @@ int run(GLFWwindow *window, ImGuiContext *context) {
     using CellsType = Eigen::Matrix<unsigned, 3, Eigen::Dynamic>;
     using Mesh = ml::Mesh<PointsType, CellsType>;
 
-//    auto m = make_hopf(3, 4, 5);
-//    auto mesh = ml::make_cube_wire<4>(0.22f);
-    auto mesh = make_hopf(6, 8, 4096);
+    auto mesh = make_hopf(5, 32, 1024);
 
     auto elements = (GLint) ind_buf.upload(mesh.cells.reshaped());
     vert_buf.upload(mesh.points.colwise());
