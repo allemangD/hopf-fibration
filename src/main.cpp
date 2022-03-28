@@ -23,15 +23,8 @@ struct State {
     Eigen::Vector4f fg{0.71f, 0.53f, 0.94f, 1.00f};
     Eigen::Vector4f wf{0.95f, 0.95f, 0.95f, 1.00f};
 
-    Eigen::Vector4f R{1.00f, 0.00f, 0.00f, 1.00f};
-    Eigen::Vector4f G{0.00f, 1.00f, 0.00f, 1.00f};
-    Eigen::Vector4f B{0.00f, 0.00f, 1.00f, 1.00f};
-    Eigen::Vector4f Y{1.20f, 1.20f, 0.00f, 1.00f};
-
     Transform4 rot = Transform4::Identity();
     Transform3 view = Transform3::Identity();
-
-    bool color_axes = false;
 };
 
 Eigen::Matrix4f rotor(int u, int v, float rad) {
@@ -80,6 +73,7 @@ void show_overlay(State &state) {
 
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.35f * style.Alpha);
+    ImGui::SetNextWindowCollapsed(true, ImGuiCond_Appearing);
     ImGui::Begin("Controls", nullptr, window_flags);
 
     ImGuiIO &io = ImGui::GetIO();
@@ -90,8 +84,6 @@ void show_overlay(State &state) {
     ImGui::ColorEdit3("Background", state.bg.data(), ImGuiColorEditFlags_Float);
     ImGui::ColorEdit3("Foreground", state.fg.data(), ImGuiColorEditFlags_Float);
     ImGui::ColorEdit3("Wireframe", state.wf.data(), ImGuiColorEditFlags_Float);
-
-    ImGui::Checkbox("Show RGBY axis colors", &state.color_axes);
 
     if (io.MouseDown[0] && !io.WantCaptureMouse) {
         Eigen::Matrix4f rot = Eigen::Matrix4f::Identity();
@@ -169,28 +161,57 @@ auto make_hopf(size_t latitudes, size_t longitudes, size_t link_res) {
     return ml::Mesh(points, lines);
 }
 
+auto make_link(float n, float e1, size_t link_res) {
+    Eigen::Matrix4Xf points(4, link_res);
+    ml::Matrix1Xui lines(1, link_res);
+
+    Eigen::Index idx = 0;
+
+    for (int k = 0; k < link_res; ++k) {
+        float e2 = (float) k / (float) link_res * M_PIf32 * 4.0f;
+
+        lines.col(idx) << idx;
+        points.col(idx) = hopf_map(e1, e2, n).normalized();
+        idx++;
+    }
+
+    return ml::Mesh(points, lines);
+}
+
 int run(GLFWwindow *window, ImGuiContext *context) {
     State state;
 
+    state.fg *= 0.5;
+
     Buffer<GLuint> ind_buf;
     Buffer<Eigen::Vector4f> vert_buf;
+    Buffer<Eigen::Vector4f> wire_buf;
 
     VertexArray<Eigen::Vector4f> vao(vert_buf);
     glVertexArrayElementBuffer(vao, ind_buf);
+
+    VertexArray<Eigen::Vector4f> wire_vao(wire_buf);
 
     using PointsType = Eigen::Matrix<float, 4, Eigen::Dynamic>;
     using CellsType = Eigen::Matrix<unsigned, 3, Eigen::Dynamic>;
     using Mesh = ml::Mesh<PointsType, CellsType>;
 
-    auto mesh = make_hopf(5, 32, 1024);
+    auto mesh = make_hopf(24, 48, 1024);
+//    auto mesh = make_hopf(5, 32, 1024);
 
+//        auto wire = make_link(0.0f, 0.0f, 256);
+    auto wire = make_hopf(4, 48, 1024);
+    wire_buf.upload(wire.points.colwise(), GL_STREAM_DRAW);
+    
     auto elements = (GLint) ind_buf.upload(mesh.cells.reshaped());
     vert_buf.upload(mesh.points.colwise());
 
     VertexShader vs4d(std::ifstream("res/shaders/4d.vert.glsl"));
     FragmentShader fs(std::ifstream("res/shaders/main.frag.glsl"));
+    FragmentShader fsd(std::ifstream("res/shaders/main-discard.frag.glsl"));
 
     Program pgm(vs4d, fs);
+    Program pgm_discard(vs4d, fsd);
 
     glEnable(GL_DEPTH_TEST);
 
@@ -228,6 +249,19 @@ int run(GLFWwindow *window, ImGuiContext *context) {
         glBindVertexArray(0);
         glUseProgram(0);
 
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        glUseProgram(pgm_discard);
+        glBindVertexArray(wire_vao);
+        glUniform4fv(0, 1, state.wf.data());
+        glUniform1f(1, (GLfloat) glfwGetTime());
+        glUniformMatrix4fv(2, 1, false, proj.data());
+        glUniformMatrix4fv(3, 1, false, rot.data());
+        glUniformMatrix4fv(4, 1, false, view.data());
+        glDrawArrays(GL_POINTS, 0, (GLint) wire.points.cols());
+        glBindVertexArray(0);
+        glUseProgram(0);
+
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
@@ -244,7 +278,7 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    auto *window = glfwCreateWindow(1280, 720, "Cosets Visualization", nullptr, nullptr);
+    auto *window = glfwCreateWindow(1280, 720, "Hopf Fibration", nullptr, nullptr);
     if (!window) {
         std::cerr << "GLFW:Failed to create window" << std::endl;
         return EXIT_FAILURE;

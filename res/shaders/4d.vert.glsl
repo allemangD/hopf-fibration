@@ -7,7 +7,9 @@ layout(location=4) uniform mat4 view;
 
 layout(location=0) in vec4 pos;
 
+layout(location=0) out vec4 opos;
+
 void main() {
-    vec4 pos = rot * pos;
-    gl_Position = proj * view * vec4(pos.xyz / (1 - pos.w), 1.0);
+    opos = rot * pos;
+    gl_Position = proj * view * vec4(opos.xyz / (1 - opos.w), 1.0);
 }
